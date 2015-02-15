@@ -142,17 +142,18 @@ then
                 #pfs is being updated so mirror-stream ok
                 if [[ $difference -gt $difference_warning ]] 
                 then
-                        echo "WARNING syncing but tid difference above threashold - master_pfs:$master_sync_end_tid, slave: $slave_pfs:$slave_next_sync_end_tid, difference: $difference."
+                        echo "WARNING tid difference above threashold - master:$master_sync_end_tid, slave:$slave_pfs:$slave_next_sync_end_tid, difference: $difference."
                         exit 1
                 else
-                        echo "OK syncing - $master_pfs:$master_sync_end_tid, slave: slave_pfs:$slave_next_sync_end_tid, difference: $difference."
+                        echo "OK syncing - master:$master_pfs:$master_sync_end_tid, slave:$slave_pfs:$slave_next_sync_end_tid, difference: $difference."
                         exit 0
                 fi
         else
-                echo "ERROR: slave $slave_pfs:$slave_next_sync_end_tid not increasing, difference: $difference."
+                #something wrong
+                echo "ERROR - master:$master_pfs:$master_sync_end_tid, slave:$slave_pfs:$slave_next_sync_end_tid not increasing, difference: $difference."
                 exit 2
         fi
 else
-        echo "OK synced - master: $master_pfs:$master_sync_end_tid and slave: $slave_pfs:$slave_sync_end_tid sync_end_tid match."
+        echo "OK synced - master:$master_pfs:$master_sync_end_tid, slave:$slave_pfs:$slave_sync_end_tid"
         exit 0
 fi
