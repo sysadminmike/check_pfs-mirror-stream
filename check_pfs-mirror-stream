@@ -1,0 +1,158 @@
+#!/usr/local/bin/bash
+
+
+#nagios check script for that hammer mirror-stream is working
+#and that the tids of master/slave pfs are not too far apart
+
+
+#debug=true
+
+function usage {
+ echo "check_pfs_mirror_stream -m <master_pfs> -s <slave_pfs> [-d <difference warning>] [-w <wait time>] -p master pfs ssh opts -q slave pfs ssh opts "
+ echo ""
+ echo "difference warning - difference between master and slave tid (default 5000) threashold"
+ echo "wait time - time to sleep for in between getting slave tids to check they are increasing (default 8 seconds)"
+ echo ""
+ exit 3
+}
+
+
+function get_local_pfs_sync_end_tid {
+        #$1 = pfs name
+        res=`hammer pfs-status $1 | grep 'sync-end-tid'`
+        IFS='='
+        array=( $res )
+        echo ${array[1]}
+}
+
+function get_remote_pfs_sync_end_tid {
+        #$1 = host:pfs
+        #$2 = ssh_options
+
+        ssh_options=$2
+
+        IFS=':'
+        array=( $1 )
+        host=${array[0]}
+        pfs=${array[1]}
+#echo "HOST: $host, PFS: $pfs, SSH: $ssh_options"  
+#       echo "ssh $ssh_options $host hammer pfs-status $pfs | grep 'sync-end-tid'"
+
+        res=`ssh $ssh_options $host "hammer pfs-status $pfs | grep 'sync-end-tid'"`
+        IFS='='
+        array=( $res )
+        echo ${array[1]}
+}
+
+function is_pfs_remote {
+        #$1 = pfs name
+        if [[ $1 != /* ]]; then echo true; fi
+}
+
+while getopts ":m:s:w:d:p:q:" o; do
+    case "${o}" in
+        m)
+            master_pfs=${OPTARG}
+            ;;
+        s)
+            slave_pfs=${OPTARG}
+            ;;
+        d)
+            difference_warning=${OPTARG}
+            ;;
+        w)
+            wait_time=${OPTARG}
+            ;;
+        p)
+            master_ssh_options=${OPTARG}
+            ;;
+        q)
+            slave_ssh_options=${OPTARG}
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+shift $((OPTIND-1))
+if [ -z "${master_pfs}" ] || [ -z "${slave_pfs}" ]; then
+    usage
+fi
+
+if [ -z "${difference_warning}" ]; then
+        #not sure if this is a sensible default or not?
+        difference_warning=5000
+fi
+if [ -z "${wait_time}" ]; then
+        wait_time=8
+fi
+
+if [ "${debug}" ]; then
+        echo "master: $master_pfs"
+        if [ `is_pfs_remote $master_pfs` ]; then
+                echo "master_is: remote"
+                echo "master ssh options: $master_ssh_options"
+        fi
+
+        echo "slave: $slave_pfs"
+        if [ `is_pfs_remote $slave_pfs` ]; then
+                echo "slave_is: remote"
+                echo "slave ssh options: $slave_ssh_options"
+        fi
+        echo "difference warning: $difference_warning"
+        echo "wait time: $wait_time"
+fi
+
+
+
+sync
+
+if [ `is_pfs_remote $master_pfs` ]; then
+        master_sync_end_tid=`get_remote_pfs_sync_end_tid $master_pfs "$master_ssh_options"`
+else
+        master_sync_end_tid=`get_local_pfs_sync_end_tid $master_pfs`
+fi
+
+if [ `is_pfs_remote $slave_pfs` ]; then
+        slave_sync_end_tid=`get_remote_pfs_sync_end_tid $slave_pfs "$slave_ssh_options"`
+else
+        slave_sync_end_tid=`get_local_pfs_sync_end_tid $slave_pfs`
+fi
+
+if [[ $slave_sync_end_tid -lt $master_sync_end_tid ]]
+then
+        sync
+        sleep $wait_time
+        sync
+
+        if [ `is_pfs_remote $slave_pfs` ]; then
+                slave_next_sync_end_tid=`get_remote_pfs_sync_end_tid $slave_pfs "$slave_ssh_options"`
+        else
+                slave_next_sync_end_tid=`get_local_pfs_sync_end_tid $slave_pfs`
+        fi
+        if [ `is_pfs_remote $master_pfs` ]; then
+                master_sync_end_tid=`get_remote_pfs_sync_end_tid $master_pfs "$master_ssh_options"`
+        else
+                master_sync_end_tid=`get_local_pfs_sync_end_tid $master_pfs`
+        fi
+        difference=$(($master_sync_end_tid - $slave_next_sync_end_tid))
+
+        if [[ $slave_sync_end_tid -lt $slave_next_sync_end_tid ]]
+        then
+                #pfs is being updated so mirror-stream ok
+                if [[ $difference -gt $difference_warning ]] 
+                then
+                        echo "WARNING syncing but tid difference above threashold - master_pfs:$master_sync_end_tid, slave: $slave_pfs:$slave_next_sync_end_tid, difference: $difference."
+                        exit 1
+                else
+                        echo "OK syncing - $master_pfs:$master_sync_end_tid, slave: slave_pfs:$slave_next_sync_end_tid, difference: $difference."
+                        exit 0
+                fi
+        else
+                echo "ERROR: slave $slave_pfs:$slave_next_sync_end_tid not increasing, difference: $difference."
+                exit 2
+        fi
+else
+        echo "OK synced - master: $master_pfs:$master_sync_end_tid and slave: $slave_pfs:$slave_sync_end_tid sync_end_tid match."
+        exit 0
+fi
