@@ -22,7 +22,7 @@ Example Status Information:
      OK synced - master:/home:0x000000010fa4b880, slave:/BACKUP/pfs/home:0x000000010fa4b880
 
 
-Checking on with both local master and slave:
+Checking with both local master and slave:
 
      check_pfs-mirror-stream -m /home -s /BACKUP/pfs/home
  
@@ -37,7 +37,7 @@ Checking on master with remote slave:
      check_pfs-mirror-stream -m /home -s 192.168.0.101:/BACKUP/pfs/home -q '-i/home/nagios/mykey'
  
 
-Checking on with both remote master and slave:
+Checking on both remote master and slave:
 
      check_pfs-mirror-stream -m 192.168.0.100:/home -s 192.168.0.101:/BACKUP/pfs/home -p '-i/home/nagios/mykey' -q '-i/home/nagios/mykey'
  
