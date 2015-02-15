@@ -44,3 +44,14 @@ Checking on with both remote master and slave:
  
  Note: the remote pfs checking does work but it is fiddly to get ssh setup correctly and you need to use the same user throughout as -p and -q are not passing properly.
  
+Example check_by_ssh 
+
+    define service{
+                use                             local-service
+                host_name                       dfly-server
+                normal_check_interval           50
+                retry_check_interval            15
+                notification_interval           120
+                service_description             pfs-mirror-stream /home /BACKUP/pfs/home
+                check_command                   check_by_ssh!22!check_pfs-mirror-stream -m /home -s /BACKUP/pfs/home
+    }
